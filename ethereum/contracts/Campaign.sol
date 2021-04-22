@@ -1,85 +1,105 @@
-// SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.2;
- 
+    // SPDX-License-Identifier: GPL-3.0
+    pragma solidity ^0.6.5;
+
 contract CampaignFactory {
-    Campaign[] public deployedCampaigns;
-    
-    function createCampaign(uint minimum) public {
-        Campaign newCampaign = new Campaign(minimum, msg.sender);
+    address[] public deployedCampaigns;
+
+    function createCampaign(uint minimumContri) public {
+        address newCampaign = address(new Campaign(minimumContri, msg.sender));
         deployedCampaigns.push(newCampaign);
     }
-    
-    function getDeployedCampaigns() public view returns (Campaign[] memory) {
+
+    function getDeployedCampaigns() public view returns(address[] memory) {
         return deployedCampaigns;
     }
 }
- 
+
 contract Campaign {
+
     struct Request {
         string description;
         uint value;
         address payable recipient;
         bool complete;
-        mapping (address => bool) approvals;
         uint approvalCount;
+        mapping(address => bool) approvals;
     }
-    
-    address public manager;
+
+    address payable public manager;
     uint public minimumContribution;
     mapping(address => bool) public approvers;
     uint public approversCount;
-    
-    uint numRequests;
-    mapping (uint => Request) requests;
-    
-    
-    modifier restrictedToManager() {
+
+    Request[] public requests;
+
+    modifier restricted() {
         require(msg.sender == manager);
         _;
     }
-    
-    constructor(uint minimum, address creator) {
+
+    constructor(uint c, address payable creator) public {
         manager = creator;
-        minimumContribution = minimum;
+        minimumContribution = c;
     }
-    
+
     function contribute() public payable {
         require(msg.value > minimumContribution);
+
+        // Keep track of number of contributors
+        if(!approvers[msg.sender]) {
+          approversCount ++;
+        }
         approvers[msg.sender] = true;
-        approversCount ++;
     }
-    
-    function createRequest(string calldata description, uint value, address payable recipient) public restrictedToManager {
-        // get last index of requests from storage
-       Request storage newRequest = requests[numRequests];
-       // increase requests counter
-       numRequests ++;
-       // add information about new request
-       newRequest.description = description;
-       newRequest.value = value;
-       newRequest.recipient = recipient;
-       newRequest.approvalCount = 0;
+
+    function createRequest(string memory description, uint value, address payable recipient) public restricted {
+        // Ensure we can't ask for more money than the contract holds
+        require(value <= address(this).balance);
+        Request memory newRequest = Request({
+            description: description,
+            value: value,
+            recipient: recipient,
+            complete: false,
+            approvalCount: 0
+        });
+
+        requests.push(newRequest);
     }
-    
+
     function approveRequest(uint index) public {
-        // get request at provided index from storage
-        Request storage request = requests[index];
-        // sender needs to have contributed to Campaign
+        // he is contributer
+        // he has not already approved that request
         require(approvers[msg.sender]);
-        // sender must not have voted yet
-        require(!request.approvals[msg.sender]);
-        
-        // add sender to addresses who have voted
-        request.approvals[msg.sender] = true;
-        // increment approval count
-        request.approvalCount ++;
+        require(!requests[index].approvals[msg.sender]);
+
+        // make this contributer's approval true in that request
+        // increment the approvalCount of that request
+        requests[index].approvals[msg.sender] = true;
+        requests[index].approvalCount++;
     }
-    
-    function finalizeRequest(uint index) public restrictedToManager {
-        Request storage request = requests[index];
-        require(!request.complete);
-        require(request.approvalCount > (approversCount / 2));
-        request.recipient.transfer(request.value);
-        request.complete = true;
+
+    function finalizeRequest(uint index) public restricted {
+        // Request is not already finalized
+        // Request Approval count is greater than total approvers/contributers
+        require(!requests[index].complete);
+        require(requests[index].approvalCount > (approversCount/2));
+
+        // transfer money
+        // mark request as completed
+        requests[index].recipient.transfer(requests[index].value);
+        requests[index].complete = true;
+    }
+    function getSummary() public view returns( uint, uint, uint, uint, address ) {
+        return (
+          minimumContribution,
+          address(this).balance,
+          requests.length,
+          approversCount,
+          manager
+          );
+    }
+
+    function getRequestCount() public view returns( uint ) {
+        return requests.length;
     }
 }
