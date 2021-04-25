@@ -52,9 +52,9 @@ contract Campaign {
         approvers[msg.sender] = true;
     }
 
-    function createRequest(string memory description, uint value, address payable recipient) public restricted {
+    function createRequest(string memory description, uint value, address payable recipient) public  {
         // Ensure we can't ask for more money than the contract holds
-        require(value <= address(this).balance);
+        // require(value <= address(this).balance);
         Request memory newRequest = Request({
             description: description,
             value: value,
